@@ -29,7 +29,7 @@ def recvThread (fName, filesize, sock)
 	currentSize = 0
 	#amount to read
 	size = 1024
-	puts "starting to read file data from socket"
+	puts "Starting to read file data from socket"
 	run = 1
 
 	File.open(fName, 'wb') do |file|
@@ -37,29 +37,26 @@ def recvThread (fName, filesize, sock)
 			data = sock.gets
 			size = data.size
 			currentSize += size
-			#puts "read data"
+			#write data to file
 			file.write(data)
-			puts data
 			if currentSize == filesize.to_i
 				run = 0
 			end
 		end
-		puts "end of read loop"
 	end
-	puts "end of file"
-	puts "done reading file from socket"
+	puts "End of file!"
 end
 
-def sendThread (sock, fName)
+def sendThread (cmdSock, sock, fName)
+	path = File.expand_path("..", Dir.pwd) + "/testFiles/" + fName
 	begin
-		File.open(path, "rb") do |file|
-			sock.puts(file.size)
+		File.open(fName, "rb") do |file|
+			cmdSock.puts(file.size)
 			while data = file.gets do
-				puts "read data"
 				sock.puts(data)
 			end
 		end
-		puts "done sending file"
+		puts "Done sending file!"
 	rescue SystemCallError
 		raise StandardError
 		puts "Unable to open file"
@@ -71,46 +68,44 @@ def sendThread (sock, fName)
 
 end
 
-def getCmd (sock, fName)
+def getCmd (cmdSock, sock, fName)
 	#send get command and file name
-	sock.puts('GET')
-	sock.puts(fName)
+	cmdSock.puts('GET')
+	cmdSock.puts(fName)
 	#get response from server
-	response = sock.gets.chomp
-	puts response
-	
+	response = cmdSock.gets.chomp
+	#switch on response
 	case response
 	when '1'#success
 		#start new thread for data transfer
-		fSize = sock.gets.chomp
-		recvThread(file, fSize, sock)
+		fSize = cmdSock.gets.chomp
+		recvThread(fName, fSize, sock)
 	when '0' #failure (file doesn't exist) 
+		puts "failure"
 		response = sock.gets.chomp
 		puts response
 	end
 end
 
-def sendCmd (sock, fName)
+def sendCmd (cmdSock, sock, fName)
 	#send command and file name
-	sock.puts('SEND')
-	sock.puts(fName)
-
-	response = sock.gets.chomp
-	puts response
+	cmdSock.puts('SEND')
+	cmdSock.puts(fName)
+	response = cmdSock.gets.chomp
 
 	case response
 	when '1'#success
 		#start a new thread for data transfer
-		sendThread(sock, fName)
+		sendThread(cmdSock, sock, fName)
 	when '0'#failure (file already exists)
-		response = sock.gets.chomp
+		response = cmdSock.gets.chomp
 		puts response
 	end
 end
 
-def listCmd (sock)
-	sock.puts('LIST')
-	numFiles = sock.gets.chomp
+def listCmd (cmdSock, sock)
+	cmdSock.puts('LIST')
+	numFiles = cmdSock.gets.chomp
 	puts numFiles
 	i = 0
 	if numFiles == 0
@@ -123,52 +118,51 @@ def listCmd (sock)
 			out = i.to_s + ") " + fName
 			puts out
 			if i == numFiles.to_i
-				puts "ending loop"
 				run = 0
 			end
 		end
-		puts "end of list"
+		puts "End of list"
 	end
-
 end
 
-def commandLoop (sock)
+def commandLoop (sock, serverIP)
 	i = 1
 	while i == 1 do
 		puts "Available commands: GET, SEND, LIST, QUIT"
 		STDOUT.flush
 		command = STDIN.gets.chomp
+		dataSocket = TCPSocket.new serverIP, 7006
 		case command
 		when 'GET'
 			puts "Please enter the name of the file you want to download:"
 			fName = STDIN.gets.chomp
-			getCmd(sock, fName)
+			getCmd(sock, dataSocket, fName)
 		
 		when 'SEND'
 			puts "NOTE: files for sending must be in the same directory "\
 				"that you're running the client from."
 			puts "Please enter the name of the file you want to send:"
 			fName = STDIN.gets.chomp
-			sendCmd(sock, fName)
+			sendCmd(sock, dataSocket, fName)
 		
 		when 'LIST'
-			listCmd(sock)
+			listCmd(sock, dataSocket)
 		
 		when 'QUIT' 
 			puts command
+			sock.puts('QUIT')
 			i = 0
-		end 	
+		end 
+		dataSocket.close	
 	end
 
 end
 
 #main script
-#getInput
-#asdf = gets.chomp
-#puts asdf
 
-#get ip address for client
-#ip address = gets.chomp
-s = TCPSocket.new 'localhost', 7005
-commandLoop(s)
+#get ip address for server
+puts "Please enter the IP address of the server you want to connect to: "
+ip = STDIN.gets.chomp
+s = TCPSocket.new ip, 7005
+commandLoop(s, ip)
 s.close             # close socket when done

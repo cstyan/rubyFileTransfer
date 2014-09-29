@@ -4,25 +4,19 @@ require 'socket'
 
 size = 1024
 
-def sendThread(sock, fName)
-	#puts "sending file"
-	#puts file.is_a?(file)
+def sendThread(cmdSock, sock, fName)
 	size = 1024
-	puts "sending a file"
+	puts "Sending a file"
 	path = File.expand_path("..", Dir.pwd) + "/testFiles/" + fName
 	fExists = File.exists?(path)
 	#if the file exists attempt to open it and send to client
 	if fExists == true
-		puts "file exists"
 		begin
 			#notify client of valid file name
-			sock.puts("1")
-			#open data socket on port 7006
-			puts "1"
+			cmdSock.puts("1")
 			File.open(path, "rb") do |file|
-				sock.puts(file.size)
+				cmdSock.puts(file.size)
 				while data = file.gets do
-					puts "read data"
 					sock.puts(data)
 				end
 			end
@@ -31,132 +25,129 @@ def sendThread(sock, fName)
 			raise StandardError
 			puts "Unable to open file"
 			#notify client of invalid file name
-			sock.puts("0")
-			sock.puts("Error opening file, make sure the"\
+			cmdSock.puts("0")
+			cmdSock.puts("Error opening file, make sure the"\
 				" file you're trying to open exists (LIST command)")
 		end
 	else
 		puts "file doesn't exist"
 		#notify client of invalid file name
-		sock.puts("0")
-		sock.puts("Requested file does not exist, check the available"\
+		cmdSock.puts("0")
+		cmdSock.puts("Requested file does not exist, check the available"\
 			" files (LIST command)")
 	end
 end
 
-def recvThread(sock, fName)
-	puts "recieving a file"
-	puts sock
-	puts fName
+def recvThread(cmdSock, sock, fName)
+	puts "Recieving a file"
 	path = File.expand_path("..", Dir.pwd) + "/testFiles/" + fName
 	fExists = File.exists?(path)
-	puts fExists
 	#if the file does not exist accept the file from the client
 	if fExists == false
 		#notify client we're accepting their file
-		sock.puts("1")
-		#open data socket on port 7006
-		puts "1"
-		File.open(fName, 'wb') do |file|
+		cmdSock.puts("1")
+		filesize = cmdSock.gets.chomp
+		run = 1
+		currentSize = 0
+		File.open(path, 'wb') do |file|
 			while run == 1
+				#read data from socket and update current size of download
 				data = sock.gets
 				size = data.size
 				currentSize += size
-				#puts "read data"
+				#write data to file
 				file.write(data)
-				puts data
 				if currentSize == filesize.to_i
 					run = 0
 				end
 			end
-			puts "end of read loop"
 		end
-		puts "done sending file"
+		puts "Done recieving file!"
 	else
-		puts "client is sending a file we already have"
-		sock.puts("0")
-		sock.puts("The file you're tryng to send already exists" \
+		puts "Client is trying sending a file we already have"
+		cmdSock.puts("0")
+		cmdSock.puts("The file you're tryng to send already exists" \
 			" on the server (LIST command)")
+		puts "test"
 	end
 end
 
-def getCmd (fName, sock)
+def getCmd (fName, cmdSock, sock)
 	puts "Client sent a get command"
-	puts file
-	sendThread(sock, fName)
+	puts fName
+	sendThread(cmdSock, sock, fName)
 	#respond to client
 	#open new socket to client on 7006
 end
 
-def sendCmd (fName, sock)
+def sendCmd (fName, cmdSock, sock)
 	puts "Client sent a send command"
-	recvThread(sock, fName)
+	recvThread(cmdSock, sock, fName)
 end
 
-def listCmd(sock)
+def listCmd(cmdSock, sock)
 	puts "Client sent a list command"
 	#get all files from the directory but ignore hidden . and ..
 	path = File.expand_path("..", Dir.pwd) + "/testFiles"
 	dirFiles = Dir.entries(path).reject{|entry| entry == "." || entry ==".."}
 	#tell the client how many files there are
 	numFiles = dirFiles.length
-	sock.puts(numFiles)
+	cmdSock.puts(numFiles)
+	puts "Sent # of files to client"
 	#for each file in the directoy
 	for fileName in dirFiles
 		#send the filename
 		sock.puts(fileName)
 	end
-	puts "sent all file names"
+	puts "Sent all file names"
 end
 
 def quitCmd
 	puts "Cient sent a quit command"
 end
 
-def clientFunc(sock)
+def clientFunc(sock, dataServer)
 	#read command from socket
 	puts "Getting a command from client"
 	command = sock.gets.chomp
 	puts command
-	
+	dataSocket = dataServer.accept
 	case command
 	when 'GET'
 		fName = sock.gets.chomp
 		puts fName
-		getCmd(fName, sock)
+		getCmd(fName, sock, dataSocket)	
 
 	when 'SEND'
 		fName = sock.gets.chomp
 		puts fName
-		sendCmd(fName, sock)
+		sendCmd(fName, sock, dataSocket)
 
 	when 'LIST'
-		listCmd(sock)
+		listCmd(sock, dataSocket)
 
 	when 'QUIT'
 		quitCmd
+		client.close
+		dataSocket.close
 	else
 		puts "Unknown command"
 
 	end
+	dataSocket.close
 end
 
 server = TCPServer.open(7005) # Server bound to port 7000
+dataServer = TCPServer.open(7006) #server for data transfers
 
-loop do
-  Thread.start(server.accept) do |client|
-  	puts 'sending data'
-  	i = 1
-  	#infinite loop to handle client
-  	while i == 1 do
-	#File.open('/home/callum/Desktop/git', 'rb') do |file|
-	 # 	while data = file.read(size)
-	  #		puts 'sent'
-	  #		client.write(data)
-	  #	end
-	  clientFunc(client)
-	puts 'end of file'
-	end
-    client.close
-  end
+run = 1
+while run == 1 do
+  	Thread.start(server.accept) do |client|
+	  	#infinite loop to handle client
+	  	puts "A new client connected!"
+	  	i = 1
+	  	while i == 1 do
+		  	clientFunc(client, dataServer)
+		end
+  	end
 end
