@@ -33,16 +33,20 @@ def recvThread (fName, filesize, sock)
 	run = 1
 
 	File.open(fName, 'wb') do |file|
+		puts "Percentage downloaded:"		
 		while run == 1
 			data = sock.gets
 			size = data.size
 			currentSize += size
 			#write data to file
 			file.write(data)
+			percentDownloaded = (currentSize / filesize.to_i) * 100
+			print "\r" + percentDownloaded.to_s
 			if currentSize == filesize.to_i
 				run = 0
 			end
 		end
+		puts " 	"
 	end
 	puts "End of file!"
 end
