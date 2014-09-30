@@ -1,9 +1,0 @@
-some test data, a small file
-asdf
-asdf
-asdf
-qwer
-qwer
-qwer
-qwer
-end

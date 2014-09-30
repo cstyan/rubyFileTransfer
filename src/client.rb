@@ -1,5 +1,32 @@
 #!/usr/bin/env ruby 
 
+#----------------------------------------------------------------------------------------------------------------
+#-- SOURCE FILE: client.rb - Contains implementation of all functions needed for the client.
+#--
+#-- PROGRAM: COMP 7005 - File Transfer
+#--
+#-- FUNCTIONS:
+#--  recvThread(fName, filesize, sock)
+#--  sendThread(cmdSock, sock, fName)
+#--  getCmd(cmdSock, sock, fName)
+#--  sendCmd(cmdSock, sock, fName)
+#--  listCmd(cmdSock, sock)
+#--  commandLoop(sock, serverIP)
+#--
+#-- DATE: September 29, 2014
+#--
+#-- REVISIONS: (Date and Description)
+#--
+#-- DESIGNER: Callum Styan
+#--
+#-- PROGRAMMER: Callum Styan
+#--
+#-- NOTES:
+#-- This file contains all the necessary function implementations the client portion of this assignment, which
+#-- handles sending commands to the server and all data transfer related to files.
+#----------------------------------------------------------------------------------------------------------------------
+
+#libraries
 require 'socket'
 
 #accept and control channels always use port 7005
@@ -9,23 +36,29 @@ require 'socket'
 #constants
 size = 1024
 
-#use command types in messages
-
 #Function definitions
-def recvFile (sock)
-	fRecv = File.open('./out', 'wb')
-	while data = sock.gets
-		puts "test"
-		fRecv.write(data)
-	end
 
-	#while data = sock.read(size) # Read lines from socket
-	#  fRecv.write(data)         # and print them
-	#end
-end
-
+#------------------------------------------------------------------------------------------------------------------
+#-- FUNCTION: recvThread
+#--
+#-- LAST REVISION: September 29, 2014
+#--
+#-- DESIGNER: Callum Styan
+#--
+#-- PROGRAMMER: Callum Styan
+#--
+#-- INTERFACE: recvThread(fName, filesize, sock)
+#--              fName: name of the file we requested from the server
+#--              filesize: size of the file we requested from the server
+#--				 sock: socket for the transfer of file data
+#--
+#-- NOTES:
+#-- This function handles downloading all file data from the server.  It opens a file and then
+#-- loops to read data from the socket until the amount of data recieved is equal to the filesize.
+#-- The function is called recvThread but is not run in it's own thread, this is planning ahead
+#-- in case we want multithread to allow multiple file transfers client side concurrently.
+#----------------------------------------------------------------------------------------------------------------------
 def recvThread (fName, filesize, sock)
-	#create new socket for data transfer
 	currentSize = 0
 	#amount to read
 	size = 1024
@@ -35,6 +68,12 @@ def recvThread (fName, filesize, sock)
 		puts "File is downloading . . . "		
 		while run == 1
 			data = sock.gets
+			#for some reason this check is necessary when
+			#transferring mp3 files
+			if data.class == NilClass
+				run = 0
+				next 
+			end
 			size = data.size
 			currentSize += size
 			#write data to file
@@ -45,9 +84,29 @@ def recvThread (fName, filesize, sock)
 		end
 		puts " 	"
 	end
-	puts "End of file!"
+	puts "End of file download!"
 end
 
+#------------------------------------------------------------------------------------------------------------------
+#-- FUNCTION: sendThread
+#--
+#-- LAST REVISION: September 29, 2014
+#--
+#-- DESIGNER: Callum Styan
+#--
+#-- PROGRAMMER: Callum Styan
+#--
+#-- INTERFACE: sendThread(fName, filesize, sock)
+#--              fName: name of the file we requested from the server
+#--              filesize: size of the file we requested from the server
+#--				 sock: socket for the transfer of file data
+#--
+#-- NOTES:
+#-- This function handles sending all file data to the server.  It opens a file and then
+#-- loops to send data to the socket until the entire file has been sent.
+#-- The function is called sendThread but is not run in it's own thread, this is planning ahead
+#-- in case we want multithread to allow multiple file transfers client side concurrently.
+#----------------------------------------------------------------------------------------------------------------------
 def sendThread (cmdSock, sock, fName)
 	path = File.expand_path("..", Dir.pwd) + "/testFiles/" + fName
 	begin
@@ -66,9 +125,28 @@ def sendThread (cmdSock, sock, fName)
 		sock.puts("Error opening file, make sure the"\
 			" file you're trying to open exists (LIST command)")
 	end
-
 end
 
+#------------------------------------------------------------------------------------------------------------------
+#-- FUNCTION: getCmd
+#--
+#-- LAST REVISION: September 29, 2014
+#--
+#-- DESIGNER: Callum Styan
+#--
+#-- PROGRAMMER: Callum Styan
+#--
+#-- INTERFACE: getCmd(cmdSock, sock, fName)
+#--              cmdSock: socket for the transfer of commands
+#--				 sock: socket for the transfer of file data
+#--              fName: name of the file we requested from the server
+#--
+#-- NOTES:
+#--	This function handles the client sending a GET command.  It sends the command and filename were requesting.
+#-- Then the function reads the servers response and will continue based on the response.  If the command succeeded
+#-- the client will begin downloading the file by calling recvThread, otherwise it will read an error message from
+#-- the server.
+#----------------------------------------------------------------------------------------------------------------------
 def getCmd (cmdSock, sock, fName)
 	#send get command and file name
 	cmdSock.puts('GET')
@@ -88,6 +166,26 @@ def getCmd (cmdSock, sock, fName)
 	end
 end
 
+#------------------------------------------------------------------------------------------------------------------
+#-- FUNCTION: sendCmd
+#--
+#-- LAST REVISION: September 29, 2014
+#--
+#-- DESIGNER: Callum Styan
+#--
+#-- PROGRAMMER: Callum Styan
+#--
+#-- INTERFACE: sendCmd(cmdSock, sock, fName)
+#--              cmdSock: socket for the transfer of commands
+#--				 sock: socket for the transfer of file data
+#--              fName: name of the file we requested from the server
+#--
+#-- NOTES:
+#--	This function handles the client sending a SEND command.  It sends the command and filename were sending.
+#-- Then the function reads the servers response and will continue based on the response.  If the command succeeded
+#-- the client will begin sending the file by calling sendThread, otherwise it will read an error message from
+#-- the server.
+#----------------------------------------------------------------------------------------------------------------------
 def sendCmd (cmdSock, sock, fName)
 	#send command and file name
 	cmdSock.puts('SEND')
@@ -104,10 +202,26 @@ def sendCmd (cmdSock, sock, fName)
 	end
 end
 
+#------------------------------------------------------------------------------------------------------------------
+#-- FUNCTION: listCmd
+#--
+#-- LAST REVISION: September 29, 2014
+#--
+#-- DESIGNER: Callum Styan
+#--
+#-- PROGRAMMER: Callum Styan
+#--
+#-- INTERFACE: listCmd(cmdSock, sock)
+#--              cmdSock: socket for the transfer of commands
+#--				 sock: socket for the transfer of file data
+#--
+#-- NOTES:
+#--	This function handles the client sending a LIST command.  It sends the command and then reads the number of files
+#-- from the cmdSock.  It then loops until it reads the name of each file from the socket.
+#----------------------------------------------------------------------------------------------------------------------
 def listCmd (cmdSock, sock)
 	cmdSock.puts('LIST')
 	numFiles = cmdSock.gets.chomp
-	puts numFiles
 	i = 0
 	if numFiles == 0
 		puts "No files available in the servers current file directory, try sending some files."
@@ -126,6 +240,23 @@ def listCmd (cmdSock, sock)
 	end
 end
 
+#------------------------------------------------------------------------------------------------------------------
+#-- FUNCTION: commandLoop
+#--
+#-- LAST REVISION: September 29, 2014
+#--
+#-- DESIGNER: Callum Styan
+#--
+#-- PROGRAMMER: Callum Styan
+#--
+#-- INTERFACE: commandLoop(sock, serverIP)
+#--				 sock: socket for the transfer of file data
+#--              fName: name of the file we requested from the server
+#--
+#-- NOTES:
+#--	This function loops (until a QUIT command is sent) to handle client commands.  It reads a command and then calls
+#-- the appropriate function to handle that command.  Note that a second socket is created for transfering file data.
+#----------------------------------------------------------------------------------------------------------------------
 def commandLoop (sock, serverIP)
 	i = 1
 	while i == 1 do
@@ -153,14 +284,15 @@ def commandLoop (sock, serverIP)
 			puts command
 			sock.puts('QUIT')
 			i = 0
+		else
+			puts "Invalid command, please try again"
 		end 
 		dataSocket.close	
 	end
 
 end
 
-#main script
-
+#main script, intializes socket and then calls command loop
 #get ip address for server
 puts "Please enter the IP address of the server you want to connect to: "
 ip = STDIN.gets.chomp
